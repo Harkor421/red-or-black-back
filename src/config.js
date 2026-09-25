@@ -1,17 +1,18 @@
 // ============================================================================
 // config.js — every tunable in one place.
 //
-// RED OR BLACK: every five minutes the community picks a colour. When the bell
-// rings a public drand beacon spins the wheel. If the wheel lands on the
-// community's colour, the whole creator-reward pot buys the coin back and
-// burns it. If it lands on the other one, the pot rolls over to the next spin.
+// RED OR BLACK: every five minutes people paste their wallet and pick a colour.
+// When the bell rings a public drand beacon spins the wheel, and everybody who
+// picked the colour it lands on — and holds enough of the coin — splits the
+// whole creator-reward pot in equal parts, paid in SOL. If nobody eligible
+// called it, the pot rolls over to the next spin.
 //
 // Three modes, and the page always says which one it is looking at:
 //
-//   demo  no TOKEN yet. The whole show runs on a simulated pot so the site can
-//         be built, streamed and rehearsed before the coin exists.
-//   dry   TOKEN set. Real votes, real beacon, real pot read off the chain —
-//         but no claim, no buy and no burn is ever sent.
+//   demo  no TOKEN yet. The whole show runs on a simulated pot and every wallet
+//         counts as eligible, so the site can be built and streamed first.
+//   dry   TOKEN set. Real votes, real beacon, real holdings, real pot read off
+//         the chain — the payout is simulated on mainnet, nothing is sent.
 //   live  TOKEN + TREASURY_SECRET (the coin's creator wallet) + DRY_RUN=false.
 // ============================================================================
 
@@ -39,11 +40,9 @@ export const config = {
 
   /**
    * The coin's CREATOR wallet — the one that launched it on pump.fun, because
-   * that is where pump.fun pays creator rewards. Base58 64-byte secret or a
-   * JSON byte array. The server refuses to go live if this key is not the
-   * coin's creator: claiming for somebody else's coin fails on chain anyway,
-   * and buying with a wallet that never gets refilled would spend whatever
-   * happens to be in it.
+   * that is where pump.fun pays creator rewards, and the wallet the winners
+   * are paid from. Base58 64-byte secret or a JSON byte array. The server
+   * refuses to go live if this key is not the coin's creator.
    */
   treasurySecret: process.env.TREASURY_SECRET || process.env.CREATOR_SECRET || '',
 
@@ -54,31 +53,43 @@ export const config = {
    * ---- THE POT ----
    *
    * The pot is NOT the wallet balance. The creator wallet is usually somebody's
-   * real wallet, with their own SOL in it, and a win that spent "everything
-   * above a reserve" would spend that too. So the pot is a ledger:
+   * real wallet, with their own SOL in it, and a payout of "everything above a
+   * reserve" would hand that out too. So the pot is a ledger:
    *
-   *   pot = what was carried over + what this round claimed from the vaults
+   *   pot = what was carried over + what the bells claimed from the vaults
    *
-   * A win spends the pot and nothing else. A loss carries it. Without a
+   * A payout spends the pot and nothing else. A rollover carries it. Without a
    * database the carried figure starts at zero on every boot, which errs on
-   * the side of spending LESS, never more.
+   * the side of paying LESS, never more.
    */
   /** SOL that always stays in the wallet for fees and rent, whatever the pot says. */
   leaveSol: num(process.env.LEAVE_SOL, 0.01),
-  /** A win below this does not buy: the fees would eat it. It rolls over instead. */
-  minBuySol: num(process.env.MIN_BUY_SOL, 0.01),
-  /** Hard ceiling on a single buyback, if you want one. Empty = no ceiling. */
-  maxBuySol: process.env.MAX_BUY_SOL ? Number(process.env.MAX_BUY_SOL) : null,
   /** Vault balance below which a claim is not worth a transaction. */
   claimMinSol: num(process.env.CLAIM_MIN_SOL, 0.0005),
-  slippageBps: num(process.env.SLIPPAGE_BPS, 1500),
   priorityFeeMicroLamports: num(process.env.PRIORITY_FEE_MICROLAMPORTS, 200_000),
 
   /**
-   * `bought` burns exactly what the buyback bought. `all` burns every token
-   * the creator wallet holds, which would include the dev's own bag.
+   * ---- WHO GETS PAID ----
+   *
+   * Equal parts per wallet is farmable: a wallet costs nothing to make. The
+   * floor is what prices that attack — to take two shares you have to hold
+   * the minimum twice. It is checked when you pick (so the page can tell you)
+   * and again at the bell, which is the one that counts.
    */
-  burnMode: (process.env.BURN_MODE || 'bought').toLowerCase(),
+  minHoldPct: num(process.env.MIN_HOLD_PCT, 0.05),
+  /**
+   * The smallest share worth sending. Also the floor that keeps a transfer to a
+   * brand-new wallet valid: an account below rent-exemption (0.00089 SOL)
+   * cannot be created, and one bad recipient reverts a whole batch. When the
+   * pot cannot give every winner this much, it rolls over and grows instead.
+   */
+  minShareSol: num(process.env.MIN_SHARE_SOL, 0.001),
+  /** Ceiling on what one round pays out in total, if you want one. Empty = the whole pot. */
+  maxPayoutSol: process.env.MAX_PAYOUT_SOL ? Number(process.env.MAX_PAYOUT_SOL) : null,
+  /** SystemProgram transfers per transaction. */
+  perTx: num(process.env.MAX_RECIPIENTS_PER_TX, 16),
+  /** Case-sensitive base58, comma separated. The creator wallet is always excluded. */
+  exclude: new Set((process.env.EXCLUDE_ADDRESSES || '').split(',').map((x) => x.trim()).filter(Boolean)),
 
   /** How often the live pot (carried + claimable in the vaults) is re-read. */
   potPollMs: num(process.env.POT_POLL_MS, 15_000),
@@ -104,8 +115,12 @@ export const config = {
     timeoutMs: num(process.env.DRAND_TIMEOUT_MS, 60_000),
   },
 
-  /** Distinct voters one IP may register per round. Votes are free, so this only keeps it honest-looking. */
-  maxVotersPerIp: num(process.env.MAX_VOTERS_PER_IP, 4),
+  /**
+   * Distinct wallets one IP may enter per round. A second line behind the
+   * holding floor, kept loose: phone carriers put thousands of people behind
+   * one address.
+   */
+  maxWalletsPerIp: num(process.env.MAX_WALLETS_PER_IP, 8),
 
   /** Demo pot: starts here and grows as if trades were happening. */
   demoPotSol: num(process.env.DEMO_POT_SOL, 1.2),
@@ -129,8 +144,12 @@ export const BRAND = Object.freeze({
   site: process.env.SITE_URL || '',
 })
 
-if (!['bought', 'all'].includes(config.burnMode)) {
-  console.error('[config] BURN_MODE must be "bought" or "all"')
+if (config.minShareSol < 0.00089088) {
+  console.error('[config] MIN_SHARE_SOL below 0.00089088 would revert payouts to brand-new wallets (rent exemption)')
+  process.exit(1)
+}
+if (config.perTx < 1 || config.perTx > 20) {
+  console.error('[config] MAX_RECIPIENTS_PER_TX must be between 1 and 20 — a Solana transaction has a size limit')
   process.exit(1)
 }
 if (config.roundMs < 20_000) {

@@ -2,14 +2,14 @@
 // hub.js — one HTTP server, one WebSocket, everybody at the same table.
 //
 //   connect                         -> {type:'hello', ...snapshot}
-//   {op:'hi',   voter}              -> {type:'me', roundId, side}
-//   {op:'vote', voter, side}        -> {type:'voteAck', ok, side | error}
+//   {op:'hi',   wallet}             -> {type:'me', side, eligible, holding, won}
+//   {op:'vote', wallet, side}       -> {type:'voteAck', ok, side, eligible | error}
 //   {op:'ping'}                     -> {type:'pong'}
 //
-//   broadcast: round · vote · settle · pot · totals · burn · tick · hello
+//   broadcast: round · vote · settle · pot · totals · tick · hello
 //
 // HTTP on the same port serves the same state as JSON, because a page that
-// says it burned N tokens should let anyone check without a socket client.
+// says it paid N wallets should let anyone check without a socket client.
 // ============================================================================
 
 import http from 'http'
@@ -108,6 +108,10 @@ export function createHub({ port }) {
       const snap = game.snapshot()
       return json({ mode: snap.mode, rows: snap.history.slice(0, Number(url.searchParams.get('limit') || 60)) })
     }
+    if (p.startsWith('/wallet/')) {
+      const me = await game.me(decodeURIComponent(p.slice('/wallet/'.length))).catch((e) => ({ error: e.message }))
+      return json(me, me.invalid ? 400 : 200)
+    }
     if (p.startsWith('/round/')) {
       const id = Number(p.slice('/round/'.length))
       const r = Number.isFinite(id) ? await game.round(id) : null
@@ -121,7 +125,7 @@ export function createHub({ port }) {
         `round ${snap.round?.id} · bell in ${Math.ceil(Math.max(0, snap.round.endsAt - Date.now()) / 1000)}s · ` +
         `${snap.round.counts.red} red / ${snap.round.counts.black} black · pot ${snap.pot.sol.toFixed(4)} SOL · ${clients.size} watching\n\n` +
         'WebSocket on this same URL for the live table.\n' +
-        'JSON: /state · /stats · /rounds · /round/<id> · /health\n' +
+        'JSON: /state · /stats · /rounds · /round/<id> · /wallet/<address> · /health\n' +
         `Admin (x-admin-password header): POST /set-ca {"ca":"<mint>"} · POST /set-pot {"sol":1.5}` +
         `${config.adminPassword ? '' : '  (DISABLED — set ADMIN_PASSWORD)'}\n`
     )
@@ -133,6 +137,7 @@ export function createHub({ port }) {
     clients.add(client)
     const ip = ipTag(clientIp(req))
     let lastVoteAt = 0
+    let lastHiAt = 0
     const send = (m) => {
       try {
         client.send(JSON.stringify(m))
@@ -151,14 +156,21 @@ export function createHub({ port }) {
       if (!game) return
       if (msg.op === 'ping') return send({ type: 'pong', now: Date.now() })
       if (msg.op === 'hi') {
-        const snap = game.snapshot()
-        return send({ type: 'me', roundId: snap.round?.id, side: game.myVote(msg.voter) })
+        if (Date.now() - lastHiAt < 300) return
+        lastHiAt = Date.now()
+        return game
+          .me(msg.wallet)
+          .then((me) => send({ type: 'me', wallet: msg.wallet ?? null, ...me }))
+          .catch(() => {})
       }
       if (msg.op === 'vote') {
         // Four changes of mind a second is plenty for a human.
         if (Date.now() - lastVoteAt < 250) return send({ type: 'voteAck', ok: false, error: 'slow down' })
         lastVoteAt = Date.now()
-        return send({ type: 'voteAck', ...game.vote({ voter: msg.voter, side: msg.side, ip }) })
+        return game
+          .vote({ wallet: msg.wallet, side: msg.side, ip })
+          .then((r) => send({ type: 'voteAck', wallet: msg.wallet ?? null, ...r }))
+          .catch((e) => send({ type: 'voteAck', ok: false, error: e.message }))
       }
     })
     client.on('close', () => clients.delete(client))

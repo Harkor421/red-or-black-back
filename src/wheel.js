@@ -27,8 +27,7 @@ const sha256 = (s) => crypto.createHash('sha256').update(s).digest()
 
 /**
  * The pocket a spin lands in. The randomness is domain-separated by the round
- * id and by purpose, so the spin and the tie-break read independent bits of
- * the same beacon rather than the same ones twice.
+ * id, so two games reading the same beacon do not land on the same pocket.
  *
  * 2^64 mod 36 is 16, so the modulo bias is 16 in 2^64 — nothing.
  */
@@ -37,16 +36,4 @@ export function spin(randomness, roundId) {
   const index = Number(digest.readBigUInt64BE(0) % BigInt(WHEEL.length))
   const number = WHEEL[index]
   return { index, number, color: colorOf(number) }
-}
-
-/** When the vote is level (including nobody voting), the beacon picks the colour too. */
-export function tieBreak(randomness, roundId) {
-  return sha256(`${randomness}:${roundId}:tie`)[0] % 2 === 0 ? 'red' : 'black'
-}
-
-/** The community's colour. `null` means a tie, settled by `tieBreak` once the beacon is in. */
-export function communityPick(votes) {
-  if (votes.red > votes.black) return 'red'
-  if (votes.black > votes.red) return 'black'
-  return null
 }
