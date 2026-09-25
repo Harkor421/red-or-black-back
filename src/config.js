@@ -71,12 +71,15 @@ export const config = {
   /**
    * ---- WHO GETS PAID ----
    *
-   * Equal parts per wallet is farmable: a wallet costs nothing to make. The
-   * floor is what prices that attack — to take two shares you have to hold
-   * the minimum twice. It is checked when you pick (so the page can tell you)
-   * and again at the bell, which is the one that counts.
+   * Holding the coin at all is the rule: ten cents of it or a hundred dollars,
+   * every winning wallet gets the same share. 0 means "more than nothing".
+   *
+   * The cost of that is farming: a bag split over many wallets takes many
+   * shares. Raising this (as a % of the supply) is the lever if it happens.
+   * It is checked when you pick, so the page can tell you, and again at the
+   * bell, which is the reading that pays.
    */
-  minHoldPct: num(process.env.MIN_HOLD_PCT, 0.05),
+  minHoldPct: num(process.env.MIN_HOLD_PCT, 0),
   /**
    * The smallest share worth sending. Also the floor that keeps a transfer to a
    * brand-new wallet valid: an account below rent-exemption (0.00089 SOL)

@@ -17,10 +17,10 @@ if (!mint) {
 try {
   const coin = await chain.readCoin(mint)
   const minRaw = (BigInt(coin.supplyRaw) * BigInt(Math.round(config.minHoldPct * 10_000))) / 1_000_000n
-  const ui = (raw) => (Number(raw) / 10 ** coin.decimals).toLocaleString('en-US')
+  const ui = (raw) => (Number(raw) / 10 ** coin.decimals).toLocaleString('en-US', { maximumFractionDigits: coin.decimals })
   console.info(`\n${mint}`)
   console.info(`  venue ${coin.venue} · creator ${coin.creator} (${coin.creatorKind}) · decimals ${coin.decimals}` + (coin.mcapSol ? ` · mcap ${coin.mcapSol.toFixed(1)} SOL` : ''))
-  console.info(`  to win you must hold ${ui(minRaw)} tokens (MIN_HOLD_PCT=${config.minHoldPct}%)`)
+  console.info(minRaw > 0n ? `  to win you must hold ${ui(minRaw)} tokens (MIN_HOLD_PCT=${config.minHoldPct}%)` : '  to win you must hold any amount of the coin')
   if (coin.creatorKind !== 'wallet') {
     console.info('  the creator is not a wallet (fee sharing?) — this coin cannot be played live')
     process.exit(0)

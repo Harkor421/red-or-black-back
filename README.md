@@ -2,8 +2,9 @@
 
 **Every 5 minutes: paste your wallet, pick a colour. When the bell rings a
 public randomness beacon spins the wheel, and everybody who picked the colour
-it lands on — and holds the coin — splits the whole creator-reward pot in
-equal parts, paid in SOL. If nobody eligible called it, the pot rolls over.**
+it lands on — and holds any amount of the coin — splits the whole
+creator-reward pot in equal parts, paid in SOL. If nobody eligible called it,
+the pot rolls over.**
 
 One Node process: a wall-clock round timer, the picks, the wheel, and the
 wallet that claims and pays. HTTP + WebSocket on one port. The site lives in
@@ -26,17 +27,17 @@ A pick is a wallet and a colour, one per wallet per round, changeable until the
 bell. At the bell, a wallet is paid if:
 
 1. it picked the colour the ball landed on,
-2. it holds at least `MIN_HOLD_PCT` of the supply **at the bell** (0.05% by
-   default — about 500K tokens on a pump.fun coin), and
+2. it holds the coin **at the bell** — any amount: ten cents of it counts the
+   same as a hundred dollars (`MIN_HOLD_PCT=0`), and
 3. it can receive SOL — a fresh address or a plain system account.
 
 The holding is also read when you pick, so the page can tell you straight away
 whether your pick can win, but the reading at the bell is the one that pays.
 
-**Why a floor.** Equal parts per wallet is farmable: a wallet costs nothing to
-make, so a bot with 500 empty wallets would take almost everything. The floor
-is what prices that attack — to take two shares you have to hold the minimum
-twice.
+**Equal, whatever the bag.** Every winning wallet gets the same share. Empty
+wallets never count — they hold nothing — but a bag split across many wallets
+takes many shares. If that starts happening, `MIN_HOLD_PCT` (a % of the supply)
+sets a floor, and taking two shares then costs holding it twice.
 
 **Why "can receive SOL".** The System Program's own address is a valid address
 on the curve, and anyone can open a token account for it. A transfer to it
