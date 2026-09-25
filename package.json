@@ -1,0 +1,32 @@
+{
+  "name": "red-or-black-back",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "RED OR BLACK \u2014 every 5 minutes the community picks a color, a public drand beacon spins the wheel, and if the community wins the whole creator-reward pot buys back the coin and burns it.",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "check": "for f in src/*.js; do node --check $f || exit 1; done && node src/selftest.js",
+    "probe": "node src/probe.js"
+  },
+  "engines": {
+    "node": "22.x"
+  },
+  "dependencies": {
+    "@pump-fun/pump-sdk": "2.0.0",
+    "@pump-fun/pump-swap-sdk": "^1.20.0",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "1.99.0",
+    "bn.js": "^5.2.1",
+    "bs58": "^6.0.0",
+    "dotenv": "^16.4.7",
+    "mongodb": "^6.21.0",
+    "ws": "^8.18.0"
+  },
+  "overrides": {
+    "rpc-websockets": {
+      "uuid": "^11.1.0"
+    }
+  }
+}
